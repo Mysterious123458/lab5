@@ -1,0 +1,26 @@
+spring:
+  application:
+    name: "24074"
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+
+security:
+  jwt:
+    # Секрет HS256, не менее 32 байт. В локальной базе можно значением по умолчанию,
+    # в окружении задаётся переменной JWT_SECRET из .env.example.
+    secret: ${JWT_SECRET:lab5-local-development-secret-key-change-me-in-env}
+    access-ttl: ${JWT_ACCESS_TTL:PT15M}
+    refresh-ttl: ${JWT_REFRESH_TTL:PT12H}

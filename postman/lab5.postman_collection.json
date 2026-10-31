@@ -1,0 +1,349 @@
+{
+  "info": {
+    "name": "РБПО лабораторная 5, вариант 26",
+    "description": "JWT access/refresh, серверный учёт refresh-сессий и сценарий проверки из задания. Сначала выполните «JWT → 1. Получить CSRF-токен»: изменяющие запросы передают его в заголовке X-XSRF-TOKEN. Состояния записей в user_sessions (ACTIVE → USED+ACTIVE → REVOKED) проверяются в базе вручную, как указано в README.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "basic",
+    "basic": [
+      {"key": "username", "value": "{{adminEmail}}", "type": "string"},
+      {"key": "password", "value": "{{adminPassword}}", "type": "string"}
+    ]
+  },
+  "variable": [
+    {"key": "baseUrl", "value": "http://localhost:8080"},
+    {"key": "csrfToken", "value": ""},
+    {"key": "adminEmail", "value": "admin@example.com"},
+    {"key": "adminPassword", "value": "Admin12345"},
+    {"key": "dispatcherEmail", "value": "dispatcher@example.com"},
+    {"key": "dispatcherPassword", "value": "Dispatcher123"},
+    {"key": "residentEmail", "value": "timoshenko@example.com"},
+    {"key": "residentPassword", "value": "Password123"},
+    {"key": "blockedEmail", "value": "blocked@example.com"},
+    {"key": "blockedPassword", "value": "Password123"},
+    {"key": "accessToken", "value": ""},
+    {"key": "refreshToken", "value": ""},
+    {"key": "previousRefreshToken", "value": ""},
+    {"key": "registeredEmail", "value": "ivan5@example.com"},
+    {"key": "objectId", "value": "1"},
+    {"key": "crewId", "value": "1"},
+    {"key": "reportId", "value": "1"}
+  ],
+  "item": [
+    {
+      "name": "JWT",
+      "auth": {"type": "noauth"},
+      "item": [
+        {
+          "name": "1. Получить CSRF-токен",
+          "event": [{"listen": "test", "script": {"type": "text/javascript", "exec": ["if (pm.response.code === 200) pm.collectionVariables.set('csrfToken', pm.response.json().token);"]}}],
+          "request": {"method": "GET", "url": "{{baseUrl}}/api/security/csrf"}
+        },
+        {
+          "name": "2. Вход: выдать пару токенов",
+          "event": [{"listen": "test", "script": {"type": "text/javascript", "exec": ["if (pm.response.code === 200) {pm.collectionVariables.set('accessToken', pm.response.json().accessToken);pm.collectionVariables.set('refreshToken', pm.response.json().refreshToken);}"]}}],
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "X-XSRF-TOKEN", "value": "{{csrfToken}}"}
+            ],
+            "body": {"mode": "raw", "raw": "{\n  \"email\": \"{{dispatcherEmail}}\",\n  \"password\": \"{{dispatcherPassword}}\",\n  \"deviceId\": \"postman-console\"\n}"},
+            "url": "{{baseUrl}}/auth/login"
+          }
+        },
+        {
+          "name": "3. Защищённый эндпоинт с access",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{accessToken}}"}],
+            "url": "{{baseUrl}}/api/users/me"
+          }
+        },
+        {
+          "name": "4. Обновить пару по refresh",
+          "event": [{"listen": "test", "script": {"type": "text/javascript", "exec": ["if (pm.response.code === 200) {const old = pm.collectionVariables.get('refreshToken');const pair = pm.response.json();pm.collectionVariables.set('previousRefreshToken', old);pm.collectionVariables.set('accessToken', pair.accessToken);pm.collectionVariables.set('refreshToken', pair.refreshToken);pm.test('токены отличаются от предыдущих', function () {pm.expect(pair.accessToken).to.not.eql(old);pm.expect(pair.refreshToken).to.not.eql(old);});}"]}}],
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "X-XSRF-TOKEN", "value": "{{csrfToken}}"}
+            ],
+            "body": {"mode": "raw", "raw": "{\n  \"refreshToken\": \"{{previousRefreshToken}}\"\n}"},
+            "url": "{{baseUrl}}/auth/refresh"
+          }
+        },
+        {
+          "name": "5. Повтор старого refresh отклоняется",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "X-XSRF-TOKEN", "value": "{{csrfToken}}"}
+            ],
+            "body": {"mode": "raw", "raw": "{\n  \"refreshToken\": \"{{previousRefreshToken}}\"\n}"},
+            "url": "{{baseUrl}}/auth/refresh"
+          }
+        },
+        {
+          "name": "6. Новый refresh продолжает цепочку",
+          "event": [{"listen": "test", "script": {"type": "text/javascript", "exec": ["if (pm.response.code === 200) {const pair = pm.response.json();pm.collectionVariables.set('previousRefreshToken', pm.collectionVariables.get('refreshToken'));pm.collectionVariables.set('accessToken', pair.accessToken);pm.collectionVariables.set('refreshToken', pair.refreshToken);}"]}}],
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "X-XSRF-TOKEN", "value": "{{csrfToken}}"}
+            ],
+            "body": {"mode": "raw", "raw": "{\n  \"refreshToken\": \"{{previousRefreshToken}}\"\n}"},
+            "url": "{{baseUrl}}/auth/refresh"
+          }
+        },
+        {
+          "name": "7. Регистрация сразу с токенами",
+          "event": [{"listen": "test", "script": {"type": "text/javascript", "exec": ["if (pm.response.code === 201) {pm.collectionVariables.set('accessToken', pm.response.json().accessToken);pm.collectionVariables.set('refreshToken', pm.response.json().refreshToken);}"]}}],
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "X-XSRF-TOKEN", "value": "{{csrfToken}}"}
+            ],
+            "body": {"mode": "raw", "raw": "{\n  \"fullName\": \"Иван Жителей\",\n  \"email\": \"{{registeredEmail}}\",\n  \"password\": \"Password123\",\n  \"deviceId\": \"postman-phone\"\n}"},
+            "url": "{{baseUrl}}/auth/register"
+          }
+        },
+        {
+          "name": "8. Повторная регистрация — 409",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "X-XSRF-TOKEN", "value": "{{csrfToken}}"}
+            ],
+            "body": {"mode": "raw", "raw": "{\n  \"fullName\": \"Дубль Email\",\n  \"email\": \"{{registeredEmail}}\",\n  \"password\": \"Password123\"\n}"},
+            "url": "{{baseUrl}}/auth/register"
+          }
+        },
+        {
+          "name": "9. Регистрация без пароля — 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "X-XSRF-TOKEN", "value": "{{csrfToken}}"}
+            ],
+            "body": {"mode": "raw", "raw": "{\n  \"fullName\": \"Без Пароля\",\n  \"email\": \"nopass5@example.com\"\n}"},
+            "url": "{{baseUrl}}/auth/register"
+          }
+        },
+        {
+          "name": "10. Вход с неверным паролем — 401",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "X-XSRF-TOKEN", "value": "{{csrfToken}}"}
+            ],
+            "body": {"mode": "raw", "raw": "{\n  \"email\": \"{{dispatcherEmail}}\",\n  \"password\": \"WrongPassword123\"\n}"},
+            "url": "{{baseUrl}}/auth/login"
+          }
+        },
+        {
+          "name": "11. Заблокированный пользователь — 401",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "X-XSRF-TOKEN", "value": "{{csrfToken}}"}
+            ],
+            "body": {"mode": "raw", "raw": "{\n  \"email\": \"{{blockedEmail}}\",\n  \"password\": \"{{blockedPassword}}\"\n}"},
+            "url": "{{baseUrl}}/auth/login"
+          }
+        },
+        {
+          "name": "12. Refresh вместо access отклоняется",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{refreshToken}}"}],
+            "url": "{{baseUrl}}/api/users/me"
+          }
+        },
+        {
+          "name": "13. Access в /auth/refresh отклоняется",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "X-XSRF-TOKEN", "value": "{{csrfToken}}"}
+            ],
+            "body": {"mode": "raw", "raw": "{\n  \"refreshToken\": \"{{accessToken}}\"\n}"},
+            "url": "{{baseUrl}}/auth/refresh"
+          }
+        },
+        {
+          "name": "14. Мусорный refresh отклоняется",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "X-XSRF-TOKEN", "value": "{{csrfToken}}"}
+            ],
+            "body": {"mode": "raw", "raw": "{\n  \"refreshToken\": \"не-jwt-строка\"\n}"},
+            "url": "{{baseUrl}}/auth/refresh"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Обращения",
+      "item": [
+        {
+          "name": "1. Житель создаёт обращение по Bearer",
+          "auth": {
+            "type": "basic",
+            "basic": [
+              {"key": "username", "value": "{{residentEmail}}", "type": "string"},
+              {"key": "password", "value": "{{residentPassword}}", "type": "string"}
+            ]
+          },
+          "event": [{"listen": "test", "script": {"type": "text/javascript", "exec": ["if (pm.response.code === 201) pm.collectionVariables.set('reportId', pm.response.json().id);"]}}],
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "X-XSRF-TOKEN", "value": "{{csrfToken}}"}
+            ],
+            "body": {"mode": "raw", "raw": "{\n  \"cityObjectId\": 1,\n  \"authorId\": 1,\n  \"description\": \"Не работает детская площадка\"\n}"},
+            "url": "{{baseUrl}}/api/city-reports"
+          }
+        },
+        {
+          "name": "2. Житель создаёт обращение по access после входа",
+          "event": [{"listen": "test", "script": {"type": "text/javascript", "exec": ["if (pm.response.code === 201) pm.collectionVariables.set('reportId', pm.response.json().id);"]}}],
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "X-XSRF-TOKEN", "value": "{{csrfToken}}"},
+              {"key": "Authorization", "value": "Bearer {{accessToken}}"}
+            ],
+            "body": {"mode": "raw", "raw": "{\n  \"cityObjectId\": 1,\n  \"authorId\": 1,\n  \"description\": \"Обращение, отправленное по Bearer-токену\"\n}"},
+            "url": "{{baseUrl}}/api/city-reports"
+          }
+        },
+        {
+          "name": "3. Житель не создаёт обращение за другого",
+          "auth": {
+            "type": "basic",
+            "basic": [
+              {"key": "username", "value": "{{residentEmail}}", "type": "string"},
+              {"key": "password", "value": "{{residentPassword}}", "type": "string"}
+            ]
+          },
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "X-XSRF-TOKEN", "value": "{{csrfToken}}"}
+            ],
+            "body": {"mode": "raw", "raw": "{\n  \"cityObjectId\": 1,\n  \"authorId\": 2,\n  \"description\": \"Попытка оформить за другого\"\n}"},
+            "url": "{{baseUrl}}/api/city-reports"
+          }
+        },
+        {
+          "name": "4. Диспетчер назначает бригаду",
+          "auth": {
+            "type": "basic",
+            "basic": [
+              {"key": "username", "value": "{{dispatcherEmail}}", "type": "string"},
+              {"key": "password", "value": "{{dispatcherPassword}}", "type": "string"}
+            ]
+          },
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "X-XSRF-TOKEN", "value": "{{csrfToken}}"}
+            ],
+            "body": {"mode": "raw", "raw": "{\n  \"workCrewId\": 1,\n  \"dueDate\": \"2026-11-25\"\n}"},
+            "url": "{{baseUrl}}/api/city-reports/{{reportId}}/assign"
+          }
+        },
+        {
+          "name": "5. Житель не назначает бригады",
+          "auth": {
+            "type": "basic",
+            "basic": [
+              {"key": "username", "value": "{{residentEmail}}", "type": "string"},
+              {"key": "password", "value": "{{residentPassword}}", "type": "string"}
+            ]
+          },
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "X-XSRF-TOKEN", "value": "{{csrfToken}}"}
+            ],
+            "body": {"mode": "raw", "raw": "{\n  \"workCrewId\": 1,\n  \"dueDate\": \"2026-11-26\"\n}"},
+            "url": "{{baseUrl}}/api/city-reports/{{reportId}}/assign"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Пользователи",
+      "item": [
+        {
+          "name": "1. Админ видит список пользователей",
+          "request": {"method": "GET", "url": "{{baseUrl}}/api/users"}
+        },
+        {
+          "name": "2. Житель не видит список пользователей",
+          "auth": {
+            "type": "basic",
+            "basic": [
+              {"key": "username", "value": "{{residentEmail}}", "type": "string"},
+              {"key": "password", "value": "{{residentPassword}}", "type": "string"}
+            ]
+          },
+          "request": {"method": "GET", "url": "{{baseUrl}}/api/users"}
+        },
+        {
+          "name": "3. Админ блокирует жителя",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "X-XSRF-TOKEN", "value": "{{csrfToken}}"}],
+            "url": "{{baseUrl}}/api/users/1/block"
+          }
+        },
+        {
+          "name": "4. Заблокированный житель не входит",
+          "auth": {
+            "type": "basic",
+            "basic": [
+              {"key": "username", "value": "{{residentEmail}}", "type": "string"},
+              {"key": "password", "value": "{{residentPassword}}", "type": "string"}
+            ]
+          },
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "X-XSRF-TOKEN", "value": "{{csrfToken}}"}
+            ],
+            "body": {"mode": "raw", "raw": "{\n  \"email\": \"{{residentEmail}}\",\n  \"password\": \"{{residentPassword}}\"\n}"},
+            "url": "{{baseUrl}}/auth/login"
+          }
+        },
+        {
+          "name": "5. Админ разблокирует жителя",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "X-XSRF-TOKEN", "value": "{{csrfToken}}"}],
+            "url": "{{baseUrl}}/api/users/1/unblock"
+          }
+        }
+      ]
+    }
+  ]
+}
